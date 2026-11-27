@@ -1,0 +1,12 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { text, integer, date, scoreQuiz, publicEntry, validateGenerated, validatePlanBudget } from '../src/logic.js';
+import { createAI } from '../src/ai.js';
+const question = { question: 'Q?', options: ['A', 'B', 'C', 'D'], correctAnswer: 2, explanation: 'C' };
+test('input validation', () => { assert.equal(text(' x ', 'Q'), 'x'); assert.throws(() => text('', 'Q')); assert.throws(() => integer(2.1, 'n', 1, 3)); assert.throws(() => date('2026-02-31')); assert.equal(date('2026-02-28'), '2026-02-28'); });
+test('score is computed server-side', () => { assert.equal(scoreQuiz([question, question], [2, 0]).percent, 50); assert.throws(() => scoreQuiz([question], [5])); assert.throws(() => scoreQuiz([question], [])); });
+test('unsubmitted quiz hides answers and owner', () => { const entry = { userId: 'secret', kind: 'quiz', data: { questions: [question] } }; const safe = publicEntry(entry); assert.equal(safe.userId, undefined); assert.equal(safe.data.questions[0].correctAnswer, undefined); assert.equal(safe.data.questions[0].explanation, undefined); });
+test('submitted quiz includes review', () => { const safe = publicEntry({ kind: 'quiz', data: { questions: [question], result: scoreQuiz([question], [2]) } }); assert.equal(safe.data.questions[0].correctAnswer, 2); });
+test('invalid AI outputs rejected', () => { assert.throws(() => validateGenerated('quiz', [{ ...question, correctAnswer: 4 }], 1)); assert.throws(() => validateGenerated('quiz', [question], 2)); assert.deepEqual(validateGenerated('flashcards', [{ question: 'Q', answer: 'A' }], 1), [{ question: 'Q', answer: 'A' }]); });
+test('plan time budget enforced', () => { assert.throws(() => validatePlanBudget([{ day: 1, minutes: 40 }, { day: 1, minutes: 40 }], 2, 60)); assert.throws(() => validatePlanBudget([{ day: 3, minutes: 10 }], 2, 60)); });
+test('demo AI requires no key and provides valid sample data', async () => { const ai = createAI({ demo: true }); assert.match(await ai.generate('x'), /DEMO RESPONSE/); assert.equal((await ai.structured('quiz', 'x', 3)).length, 3); assert.equal((await ai.structured('flashcards', 'x', 4)).length, 4); assert.equal((await ai.structured('plan', 'x', undefined, { days: 3, minutes: 60, subject: 'Math' })).length, 3); });
